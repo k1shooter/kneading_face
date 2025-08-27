@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Facial Expression Transformer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">
+                    <i class="fas fa-magic"></i>
+                    AI Facial Expression Transformer
+                </h1>
+                <p class="subtitle">Transform facial expressions using advanced AI technology</p>
+            </div>
+            <nav class="nav">
+                <a href="{{ url_for('index') }}" class="nav-link active">
+                    <i class="fas fa-home"></i> Transform
+                </a>
+                <a href="{{ url_for('history') }}" class="nav-link">
+                    <i class="fas fa-history"></i> History
+                </a>
+                <a href="/api/health" class="nav-link" target="_blank">
+                    <i class="fas fa-heartbeat"></i> API Status
+                </a>
+            </nav>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="upload-container">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <h3>Drag & Drop Your Image</h3>
+                            <p>or <span class="browse-text">browse files</span></p>
+                            <input type="file" id="fileInput" accept="image/*" multiple style="display: none;">
+                            <div class="file-info">
+                                <small>Supported formats: JPEG, PNG, WebP (Max: 10MB)</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Image Preview -->
+                    <div class="preview-container" id="previewContainer" style="display: none;">
+                        <div class="preview-header">
+                            <h4>Selected Image</h4>
+                            <button class="btn-clear" id="clearImage">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="preview-image">
+                            <img id="previewImg" src="" alt="Preview">
+                        </div>
+                        <div class="image-info" id="imageInfo"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Expression Selection -->
+            <section class="expression-section" id="expressionSection" style="display: none;">
+                <h3>Choose Target Expression</h3>
+                <div class="expression-grid">
+                    <div class="expression-card" data-expression="happy">
+                        <div class="expression-icon">😊</div>
+                        <h4>Happy</h4>
+                        <p>Bright, joyful smile</p>
+                    </div>
+                    <div class="expression-card" data-expression="sad">
+                        <div class="expression-icon">😢</div>
+                        <h4>Sad</h4>
+                        <p>Melancholic, downturned</p>
+                    </div>
+                    <div class="expression-card" data-expression="angry">
+                        <div class="expression-icon">😠</div>
+                        <h4>Angry</h4>
+                        <p>Intense, furrowed brow</p>
+                    </div>
+                    <div class="expression-card" data-expression="surprised">
+                        <div class="expression-icon">😲</div>
+                        <h4>Surprised</h4>
+                        <p>Wide eyes, open mouth</p>
+                    </div>
+                    <div class="expression-card" data-expression="neutral">
+                        <div class="expression-icon">😐</div>
+                        <h4>Neutral</h4>
+                        <p>Calm, relaxed expression</p>
+                    </div>
+                    <div class="expression-card" data-expression="fear">
+                        <div class="expression-icon">😨</div>
+                        <h4>Fear</h4>
+                        <p>Worried, anxious look</p>
+                    </div>
+                    <div class="expression-card" data-expression="disgust">
+                        <div class="expression-icon">🤢</div>
+                        <h4>Disgust</h4>
+                        <p>Wrinkled nose, distaste</p>
+                    </div>
+                    <div class="expression-card" data-expression="contempt">
+                        <div class="expression-icon">😤</div>
+                        <h4>Contempt</h4>
+                        <p>Disdainful, superior</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Processing Options -->
+            <section class="options-section" id="optionsSection" style="display: none;">
+                <h3>Processing Options</h3>
+                <div class="options-grid">
+                    <div class="option-group">
+                        <label for="intensitySlider">Expression Intensity</label>
+                        <div class="slider-container">
+                            <input type="range" id="intensitySlider" min="0.1" max="1.0" step="0.1" value="0.8">
+                            <span class="slider-value" id="intensityValue">0.8</span>
+                        </div>
+                    </div>
+                    <div class="option-group">
+                        <label for="qualitySelect">Output Quality</label>
+                        <select id="qualitySelect">
+                            <option value="95">High (95%)</option>
+                            <option value="85" selected>Medium (85%)</option>
+                            <option value="75">Low (75%)</option>
+                        </select>
+                    </div>
+                    <div class="option-group">
+                        <label for="formatSelect">Output Format</label>
+                        <select id="formatSelect">
+                            <option value="JPEG" selected>JPEG</option>
+                            <option value="PNG">PNG</option>
+                            <option value="WEBP">WebP</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Action Buttons -->
+            <section class="action-section" id="actionSection" style="display: none;">
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" id="resetBtn">
+                        <i class="fas fa-undo"></i> Reset
+                    </button>
+                    <button class="btn btn-primary" id="transformBtn">
+                        <i class="fas fa-magic"></i> Transform Expression
+                    </button>
+                </div>
+            </section>
+
+            <!-- Processing Status -->
+            <section class="status-section" id="statusSection" style="display: none;">
+                <div class="status-container">
+                    <div class="status-header">
+                        <h3>Processing Your Image</h3>
+                        <div class="status-indicator" id="statusIndicator">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="status-text" id="statusText">Initializing...</div>
+                    <div class="processing-time" id="processingTime">Estimated time: ~30 seconds</div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <div class="results-container">
+                    <div class="results-header">
+                        <h3>Transformation Complete!</h3>
+                        <div class="results-actions">
+                            <button class="btn btn-outline" id="compareBtn">
+                                <i class="fas fa-exchange-alt"></i> Compare
+                            </button>
+                            <button class="btn btn-success" id="downloadBtn">
+                                <i class="fas fa-download"></i> Download
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="comparison-container" id="comparisonContainer">
+                        <div class="image-comparison">
+                            <div class="comparison-item">
+                                <h4>Original</h4>
+                                <div class="comparison-image">
+                                    <img id="originalImage" src="" alt="Original">
+                                </div>
+                            </div>
+                            <div class="comparison-arrow">
+                                <i class="fas fa-arrow-right"></i>
+                            </div>
+                            <div class="comparison-item">
+                                <h4>Transformed</h4>
+                                <div class="comparison-image">
+                                    <img id="transformedImage" src="" alt="Transformed">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="result-metadata" id="resultMetadata">
+                        <div class="metadata-grid">
+                            <div class="metadata-item">
+                                <span class="metadata-label">Expression:</span>
+                                <span class="metadata-value" id="resultExpression"></span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Processing Time:</span>
+                                <span class="metadata-value" id="resultTime"></span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">File Size:</span>
+                                <span class="metadata-value" id="resultSize"></span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Format:</span>
+                                <span class="metadata-value" id="resultFormat"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Error Section -->
+            <section class="error-section" id="errorSection" style="display: none;">
+                <div class="error-container">
+                    <div class="error-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h3>Processing Error</h3>
+                    <p class="error-message" id="errorMessage">Something went wrong during processing.</p>
+                    <div class="error-actions">
+                        <button class="btn btn-secondary" id="retryBtn">
+                            <i class="fas fa-redo"></i> Try Again
+                        </button>
+                        <button class="btn btn-outline" id="reportBtn">
+                            <i class="fas fa-bug"></i> Report Issue
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>AI Facial Expression Transformer</h4>
+                    <p>Powered by advanced deep learning models</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Features</h4>
+                    <ul>
+                        <li>Real-time processing</li>
+                        <li>Multiple expressions</li>
+                        <li>High-quality output</li>
+                        <li>Batch processing</li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>API Access</h4>
+                    <p>Integrate with your applications</p>
+                    <a href="/api/docs" class="footer-link">API Documentation</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 AI Facial Expression Transformer. All rights reserved.</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h3>Processing...</h3>
+            <p>Please wait while we transform your image</p>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        // Initialize application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('AI Facial Expression Transformer initialized');
+            
+            // Initialize drag and drop functionality
+            initializeDragAndDrop();
+            
+            // Initialize expression selection
+            initializeExpressionSelection();
+            
+            // Initialize form handling
+            initializeFormHandling();
+            
+            // Initialize UI interactions
+            initializeUIInteractions();
+            
+            // Check session and load any existing data
+            checkSession();
+        });
+
+        // Basic drag and drop initialization
+        function initializeDragAndDrop() {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            
+            // Click to browse
+            uploadArea.addEventListener('click', () => fileInput.click());
+            
+            // Drag and drop events
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('drag-over');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('drag-over');
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('drag-over');
+                handleFiles(e.dataTransfer.files);
+            });
+            
+            // File input change
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+        }
+
+        // Handle file selection
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            
+            const file = files[0];
+            
+            // Validate file
+            if (!validateFile(file)) return;
+            
+            // Show preview
+            showImagePreview(file);
+            
+            // Show expression selection
+            document.getElementById('expressionSection').style.display = 'block';
+            document.getElementById('optionsSection').style.display = 'block';
+            document.getElementById('actionSection').style.display = 'block';
+        }
+
+        // Validate uploaded file
+        function validateFile(file) {
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+            const maxSize = 10 * 1024 * 1024; // 10MB
+            
+            if (!allowedTypes.includes(file.type)) {
+                showToast('Please select a valid image file (JPEG, PNG, or WebP)', 'error');
+                return false;
+            }
+            
+            if (file.size > maxSize) {
+                showToast('File size must be less than 10MB', 'error');
+                return false;
+            }
+            
+            return true;
+        }
+
+        // Show image preview
+        function showImagePreview(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const previewImg = document.getElementById('previewImg');
+                const previewContainer = document.getElementById('previewContainer');
+                const imageInfo = document.getElementById('imageInfo');
+                
+                previewImg.src = e.target.result;
+                previewContainer.style.display = 'block';
+                
+                // Show file info
+                const sizeKB = (file.size / 1024).toFixed(1);
+                imageInfo.innerHTML = `
+                    <span><strong>Name:</strong> ${file.name}</span>
+                    <span><strong>Size:</strong> ${sizeKB} KB</span>
+                    <span><strong>Type:</strong> ${file.type}</span>
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Initialize expression selection
+        function initializeExpressionSelection() {
+            const expressionCards = document.querySelectorAll('.expression-card');
+            
+            expressionCards.forEach(card => {
+                card.addEventListener('click', () => {
+                    // Remove active class from all cards
+                    expressionCards.forEach(c => c.classList.remove('active'));
+                    
+                    // Add active class to clicked card
+                    card.classList.add('active');
+                    
+                    // Store selected expression
+                    window.selectedExpression = card.dataset.expression;
+                });
+            });
+        }
+
+        // Initialize form handling
+        function initializeFormHandling() {
+            const transformBtn = document.getElementById('transformBtn');
+            const resetBtn = document.getElementById('resetBtn');
+            const intensitySlider = document.getElementById('intensitySlider');
+            const intensityValue = document.getElementById('intensityValue');
+            
+            // Transform button
+            transformBtn.addEventListener('click', handleTransform);
+            
+            // Reset button
+            resetBtn.addEventListener('click', resetForm);
+            
+            // Intensity slider
+            intensitySlider.addEventListener('input', (e) => {
+                intensityValue.textContent = e.target.value;
+            });
+        }
+
+        // Handle transformation
+        async function handleTransform() {
+            if (!window.selectedExpression) {
+                showToast('Please select a target expression', 'warning');
+                return;
+            }
+            
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files.length) {
+                showToast('Please select an image first', 'warning');
+                return;
+            }
+            
+            // Show processing status
+            showProcessingStatus();
+            
+            try {
+                // Prepare form data
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('expression', window.selectedExpression);
+                formData.append('intensity', document.getElementById('intensitySlider').value);
+                formData.append('quality', document.getElementById('qualitySelect').value);
+                formData.append('format', document.getElementById('formatSelect').value);
+                
+                // Submit transformation request
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Poll for results
+                    pollTransformationStatus(result.conversion_id);
+                } else {
+                    throw new Error(result.error || 'Transformation failed');
+                }
+                
+            } catch (error) {
+                console.error('Transformation error:', error);
+                showError(error.message);
+            }
+        }
+
+        // Show processing status
+        function showProcessingStatus() {
+            document.getElementById('statusSection').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+            
+            // Animate progress bar
+            animateProgress();
+        }
+
+        // Animate progress bar
+        function animateProgress() {
+            const progressFill = document.getElementById('progressFill');
+            const statusText = document.getElementById('statusText');
+            
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 10;
+                if (progress > 90) progress = 90;
+                
+                progressFill.style.width = progress + '%';
+                
+                if (progress < 30) {
+                    statusText.textContent = 'Analyzing image...';
+                } else if (progress < 60) {
+                    statusText.textContent = 'Processing facial features...';
+                } else if (progress < 90) {
+                    statusText.textContent = 'Applying expression transformation...';
+                }
+            }, 500);
+            
+            // Store interval for cleanup
+            window.progressInterval = interval;
+        }
+
+        // Poll transformation status
+        async function pollTransformationStatus(conversionId) {
+            const maxAttempts = 60; // 5 minutes max
+            let attempts = 0;
+            
+            const poll = async () => {
+                try {
+                    const response = await fetch(`/status/${conversionId}`);
+                    const status = await response.json();
+                    
+                    if (status.status === 'completed') {
+                        clearInterval(window.progressInterval);
+                        showResults(status);
+                    } else if (status.status === 'failed') {
+                        throw new Error(status.error || 'Processing failed');
+                    } else if (attempts < maxAttempts) {
+                        attempts++;
+                        setTimeout(poll, 5000); // Poll every 5 seconds
+                    } else {
+                        throw new Error('Processing timeout');
+                    }
+                } catch (error) {
+                    clearInterval(window.progressInterval);
+                    showError(error.message);
+                }
+            };
+            
+            poll();
+        }
+
+        // Show results
+        function showResults(result) {
+            document.getElementById('statusSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+            
+            // Update progress to 100%
+            document.getElementById('progressFill').style.width = '100%';
+            
+            // Show images
+            document.getElementById('originalImage').src = result.original_url;
+            document.getElementById('transformedImage').src = result.result_url;
+            
+            // Update metadata
+            document.getElementById('resultExpression').textContent = result.expression;
+            document.getElementById('resultTime').textContent = result.processing_time + 's';
+            document.getElementById('resultSize').textContent = result.file_size;
+            document.getElementById('resultFormat').textContent = result.format;
+            
+            // Setup download
+            setupDownload(result.result_url, result.filename);
+            
+            showToast('Transformation completed successfully!', 'success');
+        }
+
+        // Show error
+        function showError(message) {
+            document.getElementById('statusSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'block';
+            document.getElementById('errorMessage').textContent = message;
+            
+            showToast('Processing failed: ' + message, 'error');
+        }
+
+        // Setup download functionality
+        function setupDownload(url, filename) {
+            const downloadBtn = document.getElementById('downloadBtn');
+            downloadBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename || 'transformed_image.jpg';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            };
+        }
+
+        // Initialize UI interactions
+        function initializeUIInteractions() {
+            // Clear image button
+            document.getElementById('clearImage').addEventListener('click', () => {
+                resetForm();
+            });
+            
+            // Compare button
+            document.getElementById('compareBtn').addEventListener('click', () => {
+                // Toggle comparison view
+                const container = document.getElementById('comparisonContainer');
+                container.classList.toggle('side-by-side');
+            });
+            
+            // Retry button
+            document.getElementById('retryBtn').addEventListener('click', () => {
+                document.getElementById('errorSection').style.display = 'none';
+                document.getElementById('actionSection').style.display = 'block';
+            });
+        }
+
+        // Reset form
+        function resetForm() {
+            // Hide sections
+            document.getElementById('previewContainer').style.display = 'none';
+            document.getElementById('expressionSection').style.display = 'none';
+            document.getElementById('optionsSection').style.display = 'none';
+            document.getElementById('actionSection').style.display = 'none';
+            document.getElementById('statusSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+            
+            // Clear file input
+            document.getElementById('fileInput').value = '';
+            
+            // Clear selections
+            document.querySelectorAll('.expression-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            
+            // Reset values
+            window.selectedExpression = null;
+            document.getElementById('intensitySlider').value = 0.8;
+            document.getElementById('intensityValue').textContent = '0.8';
+            
+            // Clear progress interval
+            if (window.progressInterval) {
+                clearInterval(window.progressInterval);
+            }
+        }
+
+        // Check session
+        async function checkSession() {
+            try {
+                const response = await fetch('/api/health');
+                const health = await response.json();
+                console.log('Service status:', health);
+            } catch (error) {
+                console.warn('Could not check service status:', error);
+            }
+        }
+
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <div class="toast-content">
+                    <span class="toast-message">${message}</span>
+                    <button class="toast-close">&times;</button>
+                </div>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 5000);
+            
+            // Manual close
+            toast.querySelector('.toast-close').addEventListener('click', () => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

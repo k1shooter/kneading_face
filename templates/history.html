@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversion History - AI Facial Expression Transformer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <meta name="description" content="View your AI facial expression transformation history and manage your converted images">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <h1>🎭 AI Expression Transformer</h1>
+            </div>
+            <div class="nav-links">
+                <a href="{{ url_for('index') }}" class="nav-link">
+                    <span class="nav-icon">🏠</span>
+                    Home
+                </a>
+                <a href="{{ url_for('history') }}" class="nav-link active">
+                    <span class="nav-icon">📚</span>
+                    History
+                </a>
+                <a href="/api/docs" class="nav-link" target="_blank">
+                    <span class="nav-icon">📖</span>
+                    API Docs
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Page Header -->
+            <div class="page-header">
+                <h2 class="page-title">Conversion History</h2>
+                <p class="page-subtitle">View and manage your AI facial expression transformations</p>
+            </div>
+
+            <!-- History Controls -->
+            <div class="history-controls">
+                <div class="control-group">
+                    <div class="search-container">
+                        <input type="text" id="searchInput" placeholder="Search by expression type..." class="search-input">
+                        <button id="searchBtn" class="search-btn">
+                            <span class="search-icon">🔍</span>
+                        </button>
+                    </div>
+                    
+                    <div class="filter-container">
+                        <select id="expressionFilter" class="filter-select">
+                            <option value="">All Expressions</option>
+                            <option value="happy">Happy</option>
+                            <option value="sad">Sad</option>
+                            <option value="angry">Angry</option>
+                            <option value="surprised">Surprised</option>
+                            <option value="fearful">Fearful</option>
+                            <option value="disgusted">Disgusted</option>
+                            <option value="neutral">Neutral</option>
+                        </select>
+                        
+                        <select id="dateFilter" class="filter-select">
+                            <option value="">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                            <option value="year">This Year</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="action-group">
+                    <button id="refreshBtn" class="btn btn-secondary">
+                        <span class="btn-icon">🔄</span>
+                        Refresh
+                    </button>
+                    <button id="clearHistoryBtn" class="btn btn-danger">
+                        <span class="btn-icon">🗑️</span>
+                        Clear All
+                    </button>
+                    <button id="exportBtn" class="btn btn-primary">
+                        <span class="btn-icon">📥</span>
+                        Export
+                    </button>
+                </div>
+            </div>
+
+            <!-- History Stats -->
+            <div class="history-stats">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-content">
+                        <div class="stat-number" id="totalConversions">0</div>
+                        <div class="stat-label">Total Conversions</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⏱️</div>
+                    <div class="stat-content">
+                        <div class="stat-number" id="avgProcessingTime">0s</div>
+                        <div class="stat-label">Avg Processing Time</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">😊</div>
+                    <div class="stat-content">
+                        <div class="stat-number" id="favoriteExpression">-</div>
+                        <div class="stat-label">Most Used Expression</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💾</div>
+                    <div class="stat-content">
+                        <div class="stat-number" id="storageUsed">0 MB</div>
+                        <div class="stat-label">Storage Used</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="historyLoading" class="loading-container">
+                <div class="loading-spinner"></div>
+                <p class="loading-text">Loading your conversion history...</p>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyHistory" class="empty-state" style="display: none;">
+                <div class="empty-icon">📭</div>
+                <h3 class="empty-title">No Conversions Yet</h3>
+                <p class="empty-description">
+                    You haven't created any facial expression transformations yet. 
+                    Start by uploading an image and selecting an expression to transform!
+                </p>
+                <a href="{{ url_for('index') }}" class="btn btn-primary">
+                    <span class="btn-icon">🎭</span>
+                    Start Converting
+                </a>
+            </div>
+
+            <!-- History Grid -->
+            <div id="historyGrid" class="history-grid" style="display: none;">
+                <!-- History items will be dynamically loaded here -->
+            </div>
+
+            <!-- Pagination -->
+            <div id="historyPagination" class="pagination-container" style="display: none;">
+                <button id="prevPageBtn" class="pagination-btn" disabled>
+                    <span class="btn-icon">⬅️</span>
+                    Previous
+                </button>
+                <div class="pagination-info">
+                    <span id="pageInfo">Page 1 of 1</span>
+                </div>
+                <button id="nextPageBtn" class="pagination-btn" disabled>
+                    Next
+                    <span class="btn-icon">➡️</span>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- History Item Modal -->
+    <div id="historyModal" class="modal" style="display: none;">
+        <div class="modal-content history-modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Conversion Details</h3>
+                <button class="modal-close" id="closeHistoryModal">
+                    <span class="close-icon">✕</span>
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="history-detail-container">
+                    <!-- Image Comparison -->
+                    <div class="image-comparison-section">
+                        <div class="comparison-container">
+                            <div class="image-container">
+                                <h4 class="image-title">Original</h4>
+                                <div class="image-wrapper">
+                                    <img id="modalOriginalImage" src="" alt="Original image" class="comparison-image">
+                                    <div class="image-overlay">
+                                        <button class="overlay-btn" onclick="openFullscreen('modalOriginalImage')">
+                                            <span class="btn-icon">🔍</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="comparison-arrow">
+                                <span class="arrow-icon">➡️</span>
+                            </div>
+                            
+                            <div class="image-container">
+                                <h4 class="image-title">Transformed</h4>
+                                <div class="image-wrapper">
+                                    <img id="modalTransformedImage" src="" alt="Transformed image" class="comparison-image">
+                                    <div class="image-overlay">
+                                        <button class="overlay-btn" onclick="openFullscreen('modalTransformedImage')">
+                                            <span class="btn-icon">🔍</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Conversion Details -->
+                    <div class="conversion-details">
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">Expression:</span>
+                                <span id="modalExpression" class="detail-value">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Created:</span>
+                                <span id="modalCreatedAt" class="detail-value">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Processing Time:</span>
+                                <span id="modalProcessingTime" class="detail-value">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">File Size:</span>
+                                <span id="modalFileSize" class="detail-value">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Dimensions:</span>
+                                <span id="modalDimensions" class="detail-value">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Status:</span>
+                                <span id="modalStatus" class="detail-value status-badge">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="modal-actions">
+                        <button id="downloadOriginalBtn" class="btn btn-secondary">
+                            <span class="btn-icon">📥</span>
+                            Download Original
+                        </button>
+                        <button id="downloadTransformedBtn" class="btn btn-primary">
+                            <span class="btn-icon">📥</span>
+                            Download Result
+                        </button>
+                        <button id="shareBtn" class="btn btn-secondary">
+                            <span class="btn-icon">🔗</span>
+                            Share
+                        </button>
+                        <button id="deleteItemBtn" class="btn btn-danger">
+                            <span class="btn-icon">🗑️</span>
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Image Modal -->
+    <div id="fullscreenModal" class="modal fullscreen-modal" style="display: none;">
+        <div class="fullscreen-content">
+            <button class="fullscreen-close" onclick="closeFullscreen()">
+                <span class="close-icon">✕</span>
+            </button>
+            <img id="fullscreenImage" src="" alt="Fullscreen image" class="fullscreen-image">
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal" style="display: none;">
+        <div class="modal-content confirm-modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="confirmTitle">Confirm Action</h3>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage">Are you sure you want to proceed?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="confirmCancel" class="btn btn-secondary">Cancel</button>
+                <button id="confirmOk" class="btn btn-danger">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        // History page specific functionality
+        class HistoryManager {
+            constructor() {
+                this.currentPage = 1;
+                this.itemsPerPage = 12;
+                this.totalItems = 0;
+                this.currentFilter = {};
+                this.selectedItem = null;
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.loadHistory();
+            }
+
+            bindEvents() {
+                // Search and filter events
+                document.getElementById('searchInput').addEventListener('input', 
+                    this.debounce(() => this.applyFilters(), 300));
+                document.getElementById('searchBtn').addEventListener('click', () => this.applyFilters());
+                document.getElementById('expressionFilter').addEventListener('change', () => this.applyFilters());
+                document.getElementById('dateFilter').addEventListener('change', () => this.applyFilters());
+
+                // Action button events
+                document.getElementById('refreshBtn').addEventListener('click', () => this.loadHistory());
+                document.getElementById('clearHistoryBtn').addEventListener('click', () => this.clearAllHistory());
+                document.getElementById('exportBtn').addEventListener('click', () => this.exportHistory());
+
+                // Pagination events
+                document.getElementById('prevPageBtn').addEventListener('click', () => this.previousPage());
+                document.getElementById('nextPageBtn').addEventListener('click', () => this.nextPage());
+
+                // Modal events
+                document.getElementById('closeHistoryModal').addEventListener('click', () => this.closeModal());
+                document.getElementById('downloadOriginalBtn').addEventListener('click', () => this.downloadOriginal());
+                document.getElementById('downloadTransformedBtn').addEventListener('click', () => this.downloadTransformed());
+                document.getElementById('shareBtn').addEventListener('click', () => this.shareItem());
+                document.getElementById('deleteItemBtn').addEventListener('click', () => this.deleteItem());
+
+                // Confirmation modal events
+                document.getElementById('confirmCancel').addEventListener('click', () => this.closeConfirmModal());
+                document.getElementById('confirmOk').addEventListener('click', () => this.executeConfirmedAction());
+
+                // Keyboard events
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        this.closeModal();
+                        this.closeConfirmModal();
+                        this.closeFullscreen();
+                    }
+                });
+            }
+
+            async loadHistory() {
+                try {
+                    this.showLoading(true);
+                    
+                    const params = new URLSearchParams({
+                        page: this.currentPage,
+                        limit: this.itemsPerPage,
+                        ...this.currentFilter
+                    });
+
+                    const response = await fetch(`/api/history?${params}`);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        this.renderHistory(data.conversions);
+                        this.updateStats(data.stats);
+                        this.updatePagination(data.pagination);
+                    } else {
+                        throw new Error(data.message || 'Failed to load history');
+                    }
+                } catch (error) {
+                    console.error('Error loading history:', error);
+                    this.showToast('Failed to load conversion history', 'error');
+                    this.showEmptyState();
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            renderHistory(conversions) {
+                const grid = document.getElementById('historyGrid');
+                
+                if (!conversions || conversions.length === 0) {
+                    this.showEmptyState();
+                    return;
+                }
+
+                grid.innerHTML = conversions.map(item => this.createHistoryItem(item)).join('');
+                grid.style.display = 'grid';
+                document.getElementById('emptyHistory').style.display = 'none';
+            }
+
+            createHistoryItem(item) {
+                const createdDate = new Date(item.created_at).toLocaleDateString();
+                const statusClass = item.status === 'completed' ? 'success' : 
+                                  item.status === 'failed' ? 'error' : 'warning';
+
+                return `
+                    <div class="history-item" onclick="historyManager.openItemModal('${item.id}')">
+                        <div class="history-item-image">
+                            <img src="${item.result_path || item.original_path}" 
+                                 alt="Conversion result" 
+                                 class="history-thumbnail"
+                                 onerror="this.src='/static/images/placeholder.jpg'">
+                            <div class="image-overlay">
+                                <span class="overlay-icon">👁️</span>
+                            </div>
+                        </div>
+                        
+                        <div class="history-item-content">
+                            <div class="history-item-header">
+                                <h4 class="history-item-title">${item.target_expression}</h4>
+                                <span class="status-badge ${statusClass}">${item.status}</span>
+                            </div>
+                            
+                            <div class="history-item-meta">
+                                <div class="meta-item">
+                                    <span class="meta-icon">📅</span>
+                                    <span class="meta-text">${createdDate}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-icon">⏱️</span>
+                                    <span class="meta-text">${item.processing_time || 'N/A'}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="history-item-actions">
+                                <button class="action-btn" onclick="event.stopPropagation(); historyManager.downloadResult('${item.id}')" 
+                                        title="Download">
+                                    <span class="btn-icon">📥</span>
+                                </button>
+                                <button class="action-btn" onclick="event.stopPropagation(); historyManager.shareItem('${item.id}')" 
+                                        title="Share">
+                                    <span class="btn-icon">🔗</span>
+                                </button>
+                                <button class="action-btn danger" onclick="event.stopPropagation(); historyManager.deleteItem('${item.id}')" 
+                                        title="Delete">
+                                    <span class="btn-icon">🗑️</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            updateStats(stats) {
+                if (stats) {
+                    document.getElementById('totalConversions').textContent = stats.total || 0;
+                    document.getElementById('avgProcessingTime').textContent = stats.avgProcessingTime || '0s';
+                    document.getElementById('favoriteExpression').textContent = stats.favoriteExpression || '-';
+                    document.getElementById('storageUsed').textContent = stats.storageUsed || '0 MB';
+                }
+            }
+
+            updatePagination(pagination) {
+                if (pagination) {
+                    this.totalItems = pagination.total;
+                    const totalPages = Math.ceil(this.totalItems / this.itemsPerPage);
+                    
+                    document.getElementById('pageInfo').textContent = `Page ${this.currentPage} of ${totalPages}`;
+                    document.getElementById('prevPageBtn').disabled = this.currentPage <= 1;
+                    document.getElementById('nextPageBtn').disabled = this.currentPage >= totalPages;
+                    
+                    document.getElementById('historyPagination').style.display = 
+                        totalPages > 1 ? 'flex' : 'none';
+                }
+            }
+
+            applyFilters() {
+                const searchTerm = document.getElementById('searchInput').value.trim();
+                const expressionFilter = document.getElementById('expressionFilter').value;
+                const dateFilter = document.getElementById('dateFilter').value;
+
+                this.currentFilter = {};
+                if (searchTerm) this.currentFilter.search = searchTerm;
+                if (expressionFilter) this.currentFilter.expression = expressionFilter;
+                if (dateFilter) this.currentFilter.date = dateFilter;
+
+                this.currentPage = 1;
+                this.loadHistory();
+            }
+
+            async openItemModal(itemId) {
+                try {
+                    const response = await fetch(`/api/history/${itemId}`);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        this.selectedItem = data.conversion;
+                        this.populateModal(data.conversion);
+                        document.getElementById('historyModal').style.display = 'flex';
+                    } else {
+                        throw new Error(data.message || 'Failed to load item details');
+                    }
+                } catch (error) {
+                    console.error('Error loading item details:', error);
+                    this.showToast('Failed to load conversion details', 'error');
+                }
+            }
+
+            populateModal(item) {
+                document.getElementById('modalOriginalImage').src = item.original_path;
+                document.getElementById('modalTransformedImage').src = item.result_path;
+                document.getElementById('modalExpression').textContent = item.target_expression;
+                document.getElementById('modalCreatedAt').textContent = 
+                    new Date(item.created_at).toLocaleString();
+                document.getElementById('modalProcessingTime').textContent = 
+                    item.processing_time || 'N/A';
+                document.getElementById('modalFileSize').textContent = item.file_size || 'N/A';
+                document.getElementById('modalDimensions').textContent = 
+                    item.dimensions || 'N/A';
+                
+                const statusBadge = document.getElementById('modalStatus');
+                statusBadge.textContent = item.status;
+                statusBadge.className = `detail-value status-badge ${
+                    item.status === 'completed' ? 'success' : 
+                    item.status === 'failed' ? 'error' : 'warning'
+                }`;
+            }
+
+            closeModal() {
+                document.getElementById('historyModal').style.display = 'none';
+                this.selectedItem = null;
+            }
+
+            previousPage() {
+                if (this.currentPage > 1) {
+                    this.currentPage--;
+                    this.loadHistory();
+                }
+            }
+
+            nextPage() {
+                const totalPages = Math.ceil(this.totalItems / this.itemsPerPage);
+                if (this.currentPage < totalPages) {
+                    this.currentPage++;
+                    this.loadHistory();
+                }
+            }
+
+            showLoading(show) {
+                document.getElementById('historyLoading').style.display = show ? 'flex' : 'none';
+                document.getElementById('historyGrid').style.display = show ? 'none' : 'grid';
+            }
+
+            showEmptyState() {
+                document.getElementById('emptyHistory').style.display = 'flex';
+                document.getElementById('historyGrid').style.display = 'none';
+                document.getElementById('historyPagination').style.display = 'none';
+            }
+
+            // Utility methods
+            debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
+
+            showToast(message, type = 'info') {
+                // Use the existing toast functionality from main.js
+                if (window.facialExpressionApp && window.facialExpressionApp.showToast) {
+                    window.facialExpressionApp.showToast(message, type);
+                } else {
+                    console.log(`${type.toUpperCase()}: ${message}`);
+                }
+            }
+
+            // Action methods (placeholder implementations)
+            async downloadOriginal() {
+                if (this.selectedItem) {
+                    window.open(this.selectedItem.original_path, '_blank');
+                }
+            }
+
+            async downloadTransformed() {
+                if (this.selectedItem) {
+                    window.open(this.selectedItem.result_path, '_blank');
+                }
+            }
+
+            async downloadResult(itemId) {
+                try {
+                    const response = await fetch(`/api/history/${itemId}`);
+                    const data = await response.json();
+                    if (data.success && data.conversion.result_path) {
+                        window.open(data.conversion.result_path, '_blank');
+                    }
+                } catch (error) {
+                    this.showToast('Failed to download result', 'error');
+                }
+            }
+
+            async shareItem(itemId = null) {
+                const id = itemId || (this.selectedItem ? this.selectedItem.id : null);
+                if (id) {
+                    const shareUrl = `${window.location.origin}/results/${id}`;
+                    if (navigator.share) {
+                        navigator.share({
+                            title: 'AI Facial Expression Transformation',
+                            url: shareUrl
+                        });
+                    } else {
+                        navigator.clipboard.writeText(shareUrl);
+                        this.showToast('Share link copied to clipboard', 'success');
+                    }
+                }
+            }
+
+            async deleteItem(itemId = null) {
+                const id = itemId || (this.selectedItem ? this.selectedItem.id : null);
+                if (id) {
+                    this.showConfirmModal(
+                        'Delete Conversion',
+                        'Are you sure you want to delete this conversion? This action cannot be undone.',
+                        () => this.executeDelete(id)
+                    );
+                }
+            }
+
+            async executeDelete(itemId) {
+                try {
+                    const response = await fetch(`/api/history/${itemId}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showToast('Conversion deleted successfully', 'success');
+                        this.closeModal();
+                        this.loadHistory();
+                    } else {
+                        throw new Error(data.message || 'Failed to delete conversion');
+                    }
+                } catch (error) {
+                    this.showToast('Failed to delete conversion', 'error');
+                }
+            }
+
+            async clearAllHistory() {
+                this.showConfirmModal(
+                    'Clear All History',
+                    'Are you sure you want to delete all conversion history? This action cannot be undone.',
+                    () => this.executeClearAll()
+                );
+            }
+
+            async executeClearAll() {
+                try {
+                    const response = await fetch('/api/history', {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showToast('All history cleared successfully', 'success');
+                        this.loadHistory();
+                    } else {
+                        throw new Error(data.message || 'Failed to clear history');
+                    }
+                } catch (error) {
+                    this.showToast('Failed to clear history', 'error');
+                }
+            }
+
+            async exportHistory() {
+                try {
+                    const response = await fetch('/api/history/export');
+                    const blob = await response.blob();
+                    
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `conversion_history_${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    this.showToast('History exported successfully', 'success');
+                } catch (error) {
+                    this.showToast('Failed to export history', 'error');
+                }
+            }
+
+            showConfirmModal(title, message, onConfirm) {
+                document.getElementById('confirmTitle').textContent = title;
+                document.getElementById('confirmMessage').textContent = message;
+                document.getElementById('confirmModal').style.display = 'flex';
+                this.confirmAction = onConfirm;
+            }
+
+            closeConfirmModal() {
+                document.getElementById('confirmModal').style.display = 'none';
+                this.confirmAction = null;
+            }
+
+            executeConfirmedAction() {
+                if (this.confirmAction) {
+                    this.confirmAction();
+                    this.closeConfirmModal();
+                }
+            }
+        }
+
+        // Fullscreen functionality
+        function openFullscreen(imageId) {
+            const img = document.getElementById(imageId);
+            const fullscreenImg = document.getElementById('fullscreenImage');
+            fullscreenImg.src = img.src;
+            document.getElementById('fullscreenModal').style.display = 'flex';
+        }
+
+        function closeFullscreen() {
+            document.getElementById('fullscreenModal').style.display = 'none';
+        }
+
+        // Initialize history manager when page loads
+        let historyManager;
+        document.addEventListener('DOMContentLoaded', () => {
+            historyManager = new HistoryManager();
+        });
+    </script>
+</body>
+</html>

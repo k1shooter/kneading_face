@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transformation Results - AI Facial Expression Transformer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <meta name="description" content="View your AI-powered facial expression transformation results">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">
+                    <span class="logo-icon">🎭</span>
+                    AI Expression Transformer
+                </h1>
+                <nav class="nav-menu">
+                    <a href="{{ url_for('index') }}" class="nav-link">
+                        <span class="nav-icon">🏠</span>
+                        Home
+                    </a>
+                    <a href="{{ url_for('history') }}" class="nav-link">
+                        <span class="nav-icon">📚</span>
+                        History
+                    </a>
+                    <a href="#" class="nav-link active">
+                        <span class="nav-icon">✨</span>
+                        Results
+                    </a>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Results Header -->
+            <section class="results-header">
+                <div class="results-title">
+                    <h2>Transformation Complete!</h2>
+                    <p class="results-subtitle">Your facial expression has been successfully transformed</p>
+                </div>
+                
+                <!-- Transformation Info -->
+                <div class="transformation-info">
+                    <div class="info-card">
+                        <span class="info-label">Target Expression:</span>
+                        <span class="info-value expression-tag" data-expression="{{ result.target_expression }}">
+                            {{ result.target_expression.title() }}
+                        </span>
+                    </div>
+                    <div class="info-card">
+                        <span class="info-label">Processing Time:</span>
+                        <span class="info-value">{{ result.processing_time }}s</span>
+                    </div>
+                    <div class="info-card">
+                        <span class="info-label">Quality Score:</span>
+                        <span class="info-value quality-score" data-score="{{ result.quality_score }}">
+                            {{ "%.1f"|format(result.quality_score * 100) }}%
+                        </span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Image Comparison -->
+            <section class="image-comparison">
+                <div class="comparison-container">
+                    <!-- Original Image -->
+                    <div class="image-panel original-panel">
+                        <div class="panel-header">
+                            <h3>Original Image</h3>
+                            <div class="image-meta">
+                                <span class="meta-item">{{ result.original_width }}×{{ result.original_height }}</span>
+                                <span class="meta-item">{{ result.original_size }}</span>
+                            </div>
+                        </div>
+                        <div class="image-container">
+                            <img src="{{ url_for('static', filename='uploads/' + result.original_filename) }}" 
+                                 alt="Original image" 
+                                 class="comparison-image original-image"
+                                 id="originalImage">
+                            <div class="image-overlay">
+                                <button class="overlay-btn" onclick="toggleFullscreen('originalImage')">
+                                    <span class="btn-icon">🔍</span>
+                                    View Full Size
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Controls -->
+                    <div class="comparison-controls">
+                        <div class="control-group">
+                            <button class="control-btn" id="toggleComparison" onclick="toggleComparisonMode()">
+                                <span class="btn-icon">⚡</span>
+                                Toggle View
+                            </button>
+                            <button class="control-btn" id="downloadBoth" onclick="downloadBothImages()">
+                                <span class="btn-icon">📦</span>
+                                Download Both
+                            </button>
+                        </div>
+                        
+                        <!-- Slider for side-by-side comparison -->
+                        <div class="slider-container" id="comparisonSlider" style="display: none;">
+                            <input type="range" 
+                                   class="comparison-slider" 
+                                   id="imageSlider" 
+                                   min="0" 
+                                   max="100" 
+                                   value="50"
+                                   oninput="updateComparison(this.value)">
+                            <div class="slider-labels">
+                                <span>Original</span>
+                                <span>Transformed</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Transformed Image -->
+                    <div class="image-panel transformed-panel">
+                        <div class="panel-header">
+                            <h3>Transformed Image</h3>
+                            <div class="image-meta">
+                                <span class="meta-item">{{ result.output_width }}×{{ result.output_height }}</span>
+                                <span class="meta-item">{{ result.output_size }}</span>
+                            </div>
+                        </div>
+                        <div class="image-container">
+                            <img src="{{ url_for('static', filename='uploads/' + result.output_filename) }}" 
+                                 alt="Transformed image with {{ result.target_expression }} expression" 
+                                 class="comparison-image transformed-image"
+                                 id="transformedImage">
+                            <div class="image-overlay">
+                                <button class="overlay-btn" onclick="toggleFullscreen('transformedImage')">
+                                    <span class="btn-icon">🔍</span>
+                                    View Full Size
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Action Buttons -->
+            <section class="action-section">
+                <div class="action-buttons">
+                    <!-- Download Options -->
+                    <div class="download-group">
+                        <button class="action-btn primary-btn" onclick="downloadTransformed()">
+                            <span class="btn-icon">⬇️</span>
+                            Download Result
+                        </button>
+                        <div class="dropdown-menu" id="downloadMenu">
+                            <button class="dropdown-item" onclick="downloadImage('{{ result.output_filename }}', 'original')">
+                                <span class="item-icon">📸</span>
+                                Original Quality
+                            </button>
+                            <button class="dropdown-item" onclick="downloadImage('{{ result.output_filename }}', 'compressed')">
+                                <span class="item-icon">🗜️</span>
+                                Compressed (Web)
+                            </button>
+                            <button class="dropdown-item" onclick="downloadImage('{{ result.output_filename }}', 'thumbnail')">
+                                <span class="item-icon">🖼️</span>
+                                Thumbnail
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Share Options -->
+                    <button class="action-btn secondary-btn" onclick="shareResult()">
+                        <span class="btn-icon">📤</span>
+                        Share Result
+                    </button>
+
+                    <!-- Transform Again -->
+                    <button class="action-btn accent-btn" onclick="transformAgain()">
+                        <span class="btn-icon">🔄</span>
+                        Transform Again
+                    </button>
+
+                    <!-- Save to History -->
+                    <button class="action-btn" onclick="saveToHistory()" id="saveBtn">
+                        <span class="btn-icon">💾</span>
+                        Save to History
+                    </button>
+                </div>
+            </section>
+
+            <!-- Technical Details -->
+            <section class="technical-details" id="technicalDetails">
+                <div class="details-header" onclick="toggleTechnicalDetails()">
+                    <h3>Technical Details</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="details-content" style="display: none;">
+                    <div class="details-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Conversion ID:</span>
+                            <span class="detail-value">{{ result.conversion_id }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Model Used:</span>
+                            <span class="detail-value">{{ result.model_name or 'InstantID-Diffusion' }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Processing Steps:</span>
+                            <span class="detail-value">{{ result.inference_steps or 20 }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Guidance Scale:</span>
+                            <span class="detail-value">{{ result.guidance_scale or 7.5 }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Seed:</span>
+                            <span class="detail-value">{{ result.seed or 'Random' }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Created:</span>
+                            <span class="detail-value">{{ result.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Related Expressions -->
+            <section class="related-expressions">
+                <h3>Try Other Expressions</h3>
+                <div class="expression-suggestions">
+                    {% set all_expressions = ['happy', 'sad', 'angry', 'surprised', 'neutral', 'fear', 'disgust'] %}
+                    {% for expression in all_expressions %}
+                        {% if expression != result.target_expression %}
+                        <button class="expression-suggestion" 
+                                data-expression="{{ expression }}"
+                                onclick="tryExpression('{{ expression }}')">
+                            <span class="expression-emoji">{{ get_expression_emoji(expression) }}</span>
+                            <span class="expression-name">{{ expression.title() }}</span>
+                        </button>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>&copy; 2024 AI Facial Expression Transformer. Powered by advanced diffusion models.</p>
+                <div class="footer-links">
+                    <a href="#" class="footer-link">Privacy Policy</a>
+                    <a href="#" class="footer-link">Terms of Service</a>
+                    <a href="#" class="footer-link">API Documentation</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Fullscreen Modal -->
+    <div class="fullscreen-modal" id="fullscreenModal" style="display: none;">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeFullscreen()">×</button>
+            <img src="" alt="Fullscreen image" id="fullscreenImage">
+            <div class="modal-controls">
+                <button class="modal-btn" onclick="downloadCurrentImage()">
+                    <span class="btn-icon">⬇️</span>
+                    Download
+                </button>
+                <button class="modal-btn" onclick="closeFullscreen()">
+                    <span class="btn-icon">✖️</span>
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Processing...</p>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // Global variables
+        let comparisonMode = 'side-by-side';
+        let currentFullscreenImage = null;
+        
+        // Expression emoji mapping
+        const expressionEmojis = {
+            'happy': '😊',
+            'sad': '😢',
+            'angry': '😠',
+            'surprised': '😲',
+            'neutral': '😐',
+            'fear': '😨',
+            'disgust': '🤢'
+        };
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeResults();
+            setupEventListeners();
+            updateQualityScore();
+        });
+
+        function initializeResults() {
+            // Set expression emoji
+            const expressionTag = document.querySelector('.expression-tag');
+            if (expressionTag) {
+                const expression = expressionTag.dataset.expression;
+                const emoji = expressionEmojis[expression] || '🎭';
+                expressionTag.innerHTML = `${emoji} ${expression.charAt(0).toUpperCase() + expression.slice(1)}`;
+            }
+
+            // Initialize comparison view
+            setupImageComparison();
+        }
+
+        function setupEventListeners() {
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && document.getElementById('fullscreenModal').style.display !== 'none') {
+                    closeFullscreen();
+                }
+                if (e.key === 'd' && e.ctrlKey) {
+                    e.preventDefault();
+                    downloadTransformed();
+                }
+                if (e.key === 's' && e.ctrlKey) {
+                    e.preventDefault();
+                    saveToHistory();
+                }
+            });
+
+            // Download menu toggle
+            const downloadBtn = document.querySelector('.primary-btn');
+            const downloadMenu = document.getElementById('downloadMenu');
+            
+            if (downloadBtn && downloadMenu) {
+                downloadBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    downloadMenu.style.display = downloadMenu.style.display === 'block' ? 'none' : 'block';
+                });
+
+                document.addEventListener('click', function() {
+                    downloadMenu.style.display = 'none';
+                });
+            }
+        }
+
+        function setupImageComparison() {
+            const originalImg = document.getElementById('originalImage');
+            const transformedImg = document.getElementById('transformedImage');
+            
+            if (originalImg && transformedImg) {
+                // Ensure images are loaded
+                Promise.all([
+                    new Promise(resolve => originalImg.onload = resolve),
+                    new Promise(resolve => transformedImg.onload = resolve)
+                ]).then(() => {
+                    console.log('Images loaded successfully');
+                });
+            }
+        }
+
+        function updateQualityScore() {
+            const scoreElement = document.querySelector('.quality-score');
+            if (scoreElement) {
+                const score = parseFloat(scoreElement.dataset.score);
+                if (score >= 0.8) {
+                    scoreElement.classList.add('high-quality');
+                } else if (score >= 0.6) {
+                    scoreElement.classList.add('medium-quality');
+                } else {
+                    scoreElement.classList.add('low-quality');
+                }
+            }
+        }
+
+        function toggleComparisonMode() {
+            const slider = document.getElementById('comparisonSlider');
+            const toggleBtn = document.getElementById('toggleComparison');
+            
+            if (comparisonMode === 'side-by-side') {
+                comparisonMode = 'overlay';
+                slider.style.display = 'block';
+                toggleBtn.innerHTML = '<span class="btn-icon">⚡</span>Side by Side';
+                setupOverlayComparison();
+            } else {
+                comparisonMode = 'side-by-side';
+                slider.style.display = 'none';
+                toggleBtn.innerHTML = '<span class="btn-icon">⚡</span>Overlay View';
+                resetSideBySide();
+            }
+        }
+
+        function setupOverlayComparison() {
+            const container = document.querySelector('.comparison-container');
+            container.classList.add('overlay-mode');
+        }
+
+        function resetSideBySide() {
+            const container = document.querySelector('.comparison-container');
+            container.classList.remove('overlay-mode');
+        }
+
+        function updateComparison(value) {
+            if (comparisonMode === 'overlay') {
+                const transformedPanel = document.querySelector('.transformed-panel');
+                transformedPanel.style.clipPath = `inset(0 ${100 - value}% 0 0)`;
+            }
+        }
+
+        function toggleFullscreen(imageId) {
+            const image = document.getElementById(imageId);
+            const modal = document.getElementById('fullscreenModal');
+            const fullscreenImg = document.getElementById('fullscreenImage');
+            
+            if (image && modal && fullscreenImg) {
+                fullscreenImg.src = image.src;
+                fullscreenImg.alt = image.alt;
+                currentFullscreenImage = image.src;
+                modal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeFullscreen() {
+            const modal = document.getElementById('fullscreenModal');
+            modal.style.display = 'none';
+            document.body.style.overflow = 'auto';
+            currentFullscreenImage = null;
+        }
+
+        function downloadTransformed() {
+            const transformedImg = document.getElementById('transformedImage');
+            if (transformedImg) {
+                downloadImage(transformedImg.src, 'transformed_result');
+            }
+        }
+
+        function downloadBothImages() {
+            showLoading('Preparing download...');
+            
+            setTimeout(() => {
+                const originalImg = document.getElementById('originalImage');
+                const transformedImg = document.getElementById('transformedImage');
+                
+                if (originalImg && transformedImg) {
+                    downloadImage(originalImg.src, 'original_image');
+                    setTimeout(() => {
+                        downloadImage(transformedImg.src, 'transformed_result');
+                        hideLoading();
+                        showToast('Both images downloaded successfully!', 'success');
+                    }, 500);
+                } else {
+                    hideLoading();
+                    showToast('Error downloading images', 'error');
+                }
+            }, 1000);
+        }
+
+        function downloadImage(src, filename, quality = 'original') {
+            const link = document.createElement('a');
+            link.href = src;
+            link.download = `${filename}_${quality}_${Date.now()}.jpg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function downloadCurrentImage() {
+            if (currentFullscreenImage) {
+                downloadImage(currentFullscreenImage, 'fullscreen_image');
+                showToast('Image downloaded!', 'success');
+            }
+        }
+
+        function shareResult() {
+            if (navigator.share) {
+                const transformedImg = document.getElementById('transformedImage');
+                navigator.share({
+                    title: 'AI Facial Expression Transformation',
+                    text: 'Check out my AI-transformed facial expression!',
+                    url: window.location.href
+                }).then(() => {
+                    showToast('Shared successfully!', 'success');
+                }).catch(() => {
+                    fallbackShare();
+                });
+            } else {
+                fallbackShare();
+            }
+        }
+
+        function fallbackShare() {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                showToast('Link copied to clipboard!', 'success');
+            }).catch(() => {
+                showToast('Unable to share. Please copy the URL manually.', 'warning');
+            });
+        }
+
+        function transformAgain() {
+            const originalImg = document.getElementById('originalImage');
+            if (originalImg) {
+                // Store the original image in session storage for reuse
+                sessionStorage.setItem('reuse_image', originalImg.src);
+                window.location.href = "{{ url_for('index') }}";
+            }
+        }
+
+        function saveToHistory() {
+            const saveBtn = document.getElementById('saveBtn');
+            const originalText = saveBtn.innerHTML;
+            
+            saveBtn.innerHTML = '<span class="btn-icon">⏳</span>Saving...';
+            saveBtn.disabled = true;
+
+            // Simulate API call to save to history
+            fetch('/api/save-to-history', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    conversion_id: "{{ result.conversion_id }}",
+                    save_to_history: true
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    saveBtn.innerHTML = '<span class="btn-icon">✅</span>Saved!';
+                    showToast('Result saved to history!', 'success');
+                } else {
+                    throw new Error(data.message || 'Failed to save');
+                }
+            })
+            .catch(error => {
+                saveBtn.innerHTML = originalText;
+                saveBtn.disabled = false;
+                showToast('Failed to save to history', 'error');
+                console.error('Save error:', error);
+            });
+        }
+
+        function tryExpression(expression) {
+            const originalImg = document.getElementById('originalImage');
+            if (originalImg) {
+                sessionStorage.setItem('reuse_image', originalImg.src);
+                sessionStorage.setItem('target_expression', expression);
+                window.location.href = "{{ url_for('index') }}";
+            }
+        }
+
+        function toggleTechnicalDetails() {
+            const content = document.querySelector('.details-content');
+            const icon = document.querySelector('.toggle-icon');
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.textContent = '▲';
+            } else {
+                content.style.display = 'none';
+                icon.textContent = '▼';
+            }
+        }
+
+        function showLoading(message = 'Loading...') {
+            const overlay = document.getElementById('loadingOverlay');
+            const text = overlay.querySelector('.loading-text');
+            text.textContent = message;
+            overlay.style.display = 'flex';
+        }
+
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.style.display = 'none';
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            const icon = {
+                'success': '✅',
+                'error': '❌',
+                'warning': '⚠️',
+                'info': 'ℹ️'
+            }[type] || 'ℹ️';
+            
+            toast.innerHTML = `
+                <span class="toast-icon">${icon}</span>
+                <span class="toast-message">${message}</span>
+                <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 5000);
+        }
+
+        // Helper function for template
+        function getExpressionEmoji(expression) {
+            return expressionEmojis[expression] || '🎭';
+        }
+    </script>
+</body>
+</html>
