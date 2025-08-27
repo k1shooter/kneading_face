@@ -140,7 +140,7 @@ class FacialExpressionApp:
         def upload_file():
             """Handle file upload and initiate conversion."""
             try:
-                # 1. --- 요청 유효성 검사 ---
+                # Validate request
                 if 'file' not in request.files:
                     return jsonify({'error': 'No file provided'}), 400
                 
@@ -150,12 +150,14 @@ class FacialExpressionApp:
                 if file.filename == '':
                     return jsonify({'error': 'No file selected'}), 400
                 
+                # Validate file
                 if not self._allowed_file(file.filename):
                     return jsonify({'error': 'Invalid file type'}), 400
                 
-                # 2. --- 세션 및 파일 저장 ---
+                # Ensure session exists
                 session_id = self._ensure_session()
                 
+                # Save uploaded file
                 filename = secure_filename(file.filename)
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 unique_filename = f"{timestamp}_{uuid.uuid4().hex[:8]}_{filename}"
@@ -163,29 +165,15 @@ class FacialExpressionApp:
                 
                 file.save(file_path)
                 
-                # 3. --- 데이터베이스 처리 (수정된 부분) ---
-                conversion = None # 변수 초기화
-                try:
-                    # Create conversion record
-                    conversion = self.db_manager.create_conversion_record(
-                        session_id=session_id,
-                        original_filename=filename,
-                        target_expression=target_expression,
-                        file_path=file_path,
-                        file_size=os.path.getsize(file_path)
-                    )
-                    # ★★★★★ 중요: 변경사항을 데이터베이스에 커밋합니다. ★★★★★
-                    self.db_manager.db.session.commit()
-
-                except Exception as db_error:
-                    # 데이터베이스 작업 실패 시, 생성된 파일을 삭제하고 세션을 롤백합니다.
-                    logger.error(f"Database error during upload: {str(db_error)}")
-                    self.db_manager.db.session.rollback() # 변경사항 롤백
-                    if os.path.exists(file_path):
-                        os.remove(file_path) # 업로드된 파일 정리
-                    return jsonify({'error': 'Failed to create conversion record'}), 500
-
-                # 4. --- 성공 응답 반환 ---
+                # Create conversion record
+                conversion = self.db_manager.create_conversion_record(
+                    session_id=session_id,
+                    original_filename=filename,
+                    target_expression=target_expression,
+                    file_path=file_path,
+                    file_size=os.path.getsize(file_path)
+                )
+                
                 logger.info(f"File uploaded successfully: {unique_filename}, conversion_id: {conversion.id}")
                 
                 return jsonify({
@@ -198,11 +186,9 @@ class FacialExpressionApp:
             except RequestEntityTooLarge:
                 return jsonify({'error': 'File too large'}), 413
             except Exception as e:
-                # 이 외의 예외 처리
-                logger.error(f"An unexpected error occurred during upload: {str(e)}")
-                logger.error(traceback.format_exc()) # 전체 트레이스백 로깅
-                return jsonify({'error': 'Upload failed due to an unexpected error'}), 500
-            
+                logger.error(f"Upload error: {str(e)}")
+                return jsonify({'error': 'Upload failed'}), 500
+        
         # API Routes
         @self.app.route('/api/convert', methods=['POST'])
         def api_convert():
