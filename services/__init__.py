@@ -13,12 +13,12 @@ Services:
 
 from .image_processor import ImageProcessor
 from .model_service import ModelService
-from .storage_service import StorageService
+from .storage_service import StorageManager
 
 __all__ = [
     'ImageProcessor',
     'ModelService', 
-    'StorageService'
+    'StorageManager'
 ]
 
 # Service factory functions for dependency injection
@@ -57,7 +57,7 @@ def create_storage_service(config=None, db=None):
     Returns:
         StorageService: Configured storage service instance
     """
-    return StorageService(config, db)
+    return StorageManager(config, db)
 
 # Service registry for centralized service management
 class ServiceRegistry:

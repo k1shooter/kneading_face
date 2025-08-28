@@ -21,10 +21,7 @@ from werkzeug.datastructures import FileStorage
 
 # Import our custom modules
 from models import ExpressionModel, FacialExpressionPipeline, create_expression_model, create_pipeline
-from services.image_processor import (
-    validate_upload, preprocess_image, postprocess_result, 
-    cleanup_temp_files, detect_faces
-)
+from .image_processor import ImageProcessor
 from database.models import ConversionHistory, UserSession, ModelCache, db
 from config import Config
 
@@ -57,7 +54,8 @@ class ModelService:
         self.pipelines: Dict[str, FacialExpressionPipeline] = {}
         self.model_lock = threading.Lock()
         self.executor = ThreadPoolExecutor(max_workers=2)
-        
+        self.image_processor = ImageProcessor()
+
         # Performance tracking
         self.stats = {
             'total_conversions': 0,
@@ -81,25 +79,25 @@ class ModelService:
             ExpressionModel instance
         """
         with self.model_lock:
-            if model_name not in self.models:
+            actual_model_name = Config.DEFAULT_MODEL_NAME if model_name == 'default' else model_name
+            if actual_model_name not in self.models:
                 try:
-                    logger.info(f"Creating new model: {model_name}")
-                    self.models[model_name] = create_expression_model(
-                        model_name=kwargs.get('model_type', 'stable-diffusion'),
+                    logger.info(f"Creating new model: {actual_model_name}")
+                    self.models[actual_model_name] = create_expression_model(
+                        model_name=actual_model_name,
                         device=kwargs.get('device', 'auto'),
-                        precision=kwargs.get('precision', 'fp16'),
-                        **kwargs
+                        precision=kwargs.get('precision', 'fp16')
                     )
                     self.stats['models_loaded'] += 1
                     
                     # Cache model info in database
-                    self._cache_model_info(model_name, kwargs)
+                    self._cache_model_info(actual_model_name, kwargs)
                     
                 except Exception as e:
-                    logger.error(f"Failed to create model {model_name}: {str(e)}")
+                    logger.error(f"Failed to create model {actual_model_name}: {str(e)}")
                     raise
             
-            return self.models[model_name]
+            return self.models[actual_model_name]
     
     def get_or_create_pipeline(self, pipeline_name: str = "default", **kwargs) -> FacialExpressionPipeline:
         """
@@ -159,30 +157,19 @@ class ModelService:
             Dictionary containing transformation results and metadata
         """
         start_time = time.time()
-        conversion_id = str(uuid.uuid4())
+        conversion_id = kwargs.get('conversion_id') # conversion_id는 반드시 전달되어야 함
+        if not conversion_id:
+            return {'success': False, 'error': 'conversion_id is required'}
         
         try:
-            # Create conversion record
-            conversion = ConversionHistory(
-                id=conversion_id,
-                session_id=session_id,
-                original_filename=file.filename,
-                target_expression=target_expression,
-                status='processing',
-                processing_parameters={
-                    'strength': strength,
-                    'guidance_scale': guidance_scale,
-                    'num_inference_steps': num_inference_steps,
-                    'seed': seed,
-                    'model_name': model_name
-                }
-            )
-            db.session.add(conversion)
-            db.session.commit()
+            conversion = db.session.query(ConversionHistory).filter_by(id=conversion_id).first()
+            if not conversion:
+                logger.error(f"Conversion record with id {conversion_id} not found.")
+                return {'success': False, 'error': 'Conversion record not found'}
             
             # Step 1: Validate upload
             logger.info(f"Validating upload for conversion {conversion_id}")
-            validation_result = validate_upload(file)
+            validation_result = self.image_processor.validate_upload(file)
             if not validation_result['valid']:
                 conversion.update_status('failed', validation_result['error'])
                 db.session.commit()
@@ -194,7 +181,7 @@ class ModelService:
             
             # Step 2: Preprocess image
             logger.info(f"Preprocessing image for conversion {conversion_id}")
-            preprocess_result = preprocess_image(file, target_size=(512, 512))
+            preprocess_result = self.image_processor.preprocess_image(file, target_size=(512, 512))
             if not preprocess_result['success']:
                 conversion.update_status('failed', preprocess_result['error'])
                 db.session.commit()
@@ -204,7 +191,7 @@ class ModelService:
                     'conversion_id': conversion_id
                 }
             
-            processed_image = preprocess_result['image']
+            processed_image = preprocess_result['image_data']
             original_metadata = preprocess_result['metadata']
             
             # Step 3: Get or create model
@@ -233,7 +220,7 @@ class ModelService:
             
             # Step 5: Postprocess result
             logger.info(f"Postprocessing result for conversion {conversion_id}")
-            postprocess_result_data = postprocess_result(
+            postprocess_result_data = self.image_processor.postprocess_result(
                 result_image=transform_result['image'],
                 original_metadata=original_metadata,
                 output_format=kwargs.get('output_format', 'JPEG'),
@@ -243,11 +230,13 @@ class ModelService:
             # Step 6: Save results and update database
             processing_time = time.time() - start_time
             
+            conversion.result_file_path = postprocess_result_data.get('output_path')
             conversion.update_status('completed')
+
             conversion.processing_time = processing_time
             conversion.result_metadata = {
-                'output_size': postprocess_result_data['metadata']['size'],
-                'output_format': postprocess_result_data['metadata']['format'],
+                'output_size': postprocess_result_data['metadata']['file_size'],
+                'output_format': postprocess_result_data['metadata']['output_format'],
                 'faces_detected': len(transform_result.get('faces', [])),
                 'model_used': model_name,
                 'processing_time': processing_time
@@ -270,15 +259,15 @@ class ModelService:
             return {
                 'success': True,
                 'conversion_id': conversion_id,
-                'image': postprocess_result_data['image'],
+                'image': postprocess_result_data['image_data'],
                 'metadata': {
                     'original_filename': file.filename,
                     'target_expression': target_expression,
                     'processing_time': processing_time,
                     'faces_detected': len(transform_result.get('faces', [])),
                     'model_used': model_name,
-                    'output_format': postprocess_result_data['metadata']['format'],
-                    'output_size': postprocess_result_data['metadata']['size']
+                    'output_format': postprocess_result_data['metadata']['output_format'],
+                    'output_size': postprocess_result_data['metadata']['file_size']
                 }
             }
             
@@ -444,14 +433,17 @@ class ModelService:
             model_cache = ModelCache(
                 model_name=model_name,
                 model_type=config.get('model_type', 'stable-diffusion'),
+                model_version=config.get('model_version', '1.0'),
                 device=config.get('device', 'auto'),
                 precision=config.get('precision', 'fp16'),
                 model_parameters=config
             )
+            model_cache.set_model_parameters(config)
             db.session.add(model_cache)
             db.session.commit()
         except Exception as e:
             logger.error(f"Failed to cache model info: {str(e)}")
+            db.session.rollback()
     
     def _update_session_stats(self, session_id: str):
         """Update session statistics."""

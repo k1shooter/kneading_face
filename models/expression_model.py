@@ -190,7 +190,7 @@ class ExpressionModel:
                     torch_dtype=torch.float16 if self.config.precision == "fp16" else torch.float32,
                     safety_checker=None if not self.config.safety_checker else "default",
                     requires_safety_checker=self.config.requires_safety_checker,
-                    use_safetensors=True
+                    use_safetensors=False
                 )
             except Exception as e:
                 logger.warning(f"Failed to load from pretrained: {e}")

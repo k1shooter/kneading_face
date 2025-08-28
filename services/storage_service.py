@@ -25,11 +25,11 @@ from werkzeug.datastructures import FileStorage
 from PIL import Image
 import numpy as np
 
-from ..database.models import (
+from database.models import (
     db, ConversionHistory, UserSession, ModelCache,
     get_session_history, get_conversion_by_id, cleanup_old_sessions
 )
-from ..config import Config
+from config import Config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
