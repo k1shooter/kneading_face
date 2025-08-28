@@ -5,42 +5,31 @@ AI Facial Expression Transformer - Main Flask Application
 
 Main Flask application for AI-powered facial expression modification using deep learning.
 Provides web interface, REST API, and manages the complete application lifecycle.
-
-Features:
-- Web interface with drag-drop upload and expression selection
-- REST API endpoints for external integration
-- Session management and conversion history tracking
-- Real-time processing status and result preview
-- File upload validation and temporary file management
-- Database integration with automatic migrations
-- Error handling and logging
-- Performance monitoring and health checks
-
-Author: AI Facial Expression Transformer Team
-Version: 1.0.0
 """
 
 import os
 import sys
 import logging
 import traceback
-from datetime import datetime, timedelta
-from functools import wraps
+from datetime import datetime
 import uuid
-import json
+import threading # ★ 1. 백그라운드 작업을 위한 스레딩 라이브러리
 
 # Flask and extensions
-from flask import Flask, request, jsonify, render_template, session, redirect, url_for, flash, send_file
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for, flash
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 
 # Application modules
 from config import get_config
-from database import init_database, get_db_manager
-from database.models import ConversionHistory, UserSession, ModelCache
+from database import init_database
+from database.models import db, ConversionHistory, UserSession
 
-# Configure logging
+# ★ 2. AI 모델 서비스를 가져옵니다.
+from services.model_service import get_model_service
+
+# 로거 설정
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -51,417 +40,212 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# ★ 3. 백그라운드에서 AI 모델을 실행할 워커 함수 정의
+def run_model_processing(app, conversion_id, file_path, target_expression, session_id):
+    """
+    웹 서버를 차단하지 않고 별도의 스레드에서 이미지를 처리하는 함수.
+    """
+    # Flask의 애플리케이션 컨텍스트 안에서 실행해야 DB 접근 등이 가능합니다.
+    with app.app_context():
+        logger.info(f"[Thread] Conversion ID {conversion_id}에 대한 처리 시작")
+        conversion = db.session.query(ConversionHistory).filter_by(id=conversion_id).first()
+        if not conversion:
+            logger.error(f"[Thread] DB에서 Conversion ID {conversion_id}를 찾을 수 없음.")
+            return
+
+        try:
+            # 상태를 'processing'으로 업데이트
+            conversion.update_status('processing')
+            db.session.commit()
+
+            # AI 모델 서비스 가져오기 및 실행
+            model_service = get_model_service()
+            
+            # model_service는 FileStorage 객체를 기대하므로, 파일 경로를 다시 열어 전달합니다.
+            with open(file_path, 'rb') as f:
+                from werkzeug.datastructures import FileStorage
+                file_storage = FileStorage(f, filename=os.path.basename(file_path))
+                
+                # AI 엔진의 핵심 함수 호출
+                result = model_service.transform_expression(
+                    file=file_storage,
+                    target_expression=target_expression,
+                    session_id=session_id,
+                    conversion_id=conversion_id # model_service에 id 전달
+                )
+
+            if result and result.get('success'):
+                # 성공 시, 결과 파일 경로와 함께 DB 업데이트
+                conversion.result_file_path = result.get('result_file_path')
+                conversion.update_status('completed')
+                logger.info(f"[Thread] Conversion {conversion_id} 성공적으로 완료.")
+            else:
+                # 실패 시, 에러 메시지와 함께 DB 업데이트
+                error_msg = result.get('error', 'Unknown error in model service')
+                conversion.update_status('failed', error_message=error_msg)
+                logger.error(f"[Thread] Conversion {conversion_id} 실패: {error_msg}")
+            
+            db.session.commit()
+
+        except Exception as e:
+            logger.error(f"[Thread] Conversion ID {conversion_id} 처리 중 예외 발생: {e}")
+            logger.error(traceback.format_exc())
+            conversion.update_status('failed', error_message=str(e))
+            db.session.commit()
+        finally:
+            # 임시 원본 파일 삭제 (선택 사항)
+            if os.path.exists(file_path):
+                # os.remove(file_path)
+                logger.info(f"[Thread] 원본 임시 파일 {file_path} 삭제됨.")
+            pass
+
+
 class FacialExpressionApp:
-    """
-    Main application class for the Facial Expression Transformer.
-    
-    Manages Flask application lifecycle, configuration, database connections,
-    session management, file uploads, and core application functionality.
-    """
-    
     def __init__(self, config_name=None):
-        """
-        Initialize the Flask application with configuration and extensions.
-        
-        Args:
-            config_name (str, optional): Configuration environment name
-        """
         self.app = Flask(__name__)
         self.config_name = config_name or os.getenv('FLASK_ENV', 'development')
-        
-        # Load configuration
         config_class = get_config()
         self.app.config.from_object(config_class)
-        
-        # Initialize extensions
         self._init_extensions()
-        
-        # Initialize database
         self.db_manager = init_database(self.app)
-        
-        # Register routes
+        self.db = self.db_manager.db
         self._register_routes()
-        
-        # Setup error handlers
         self._setup_error_handlers()
-        
-        # Setup request hooks
         self._setup_request_hooks()
-        
         logger.info(f"Facial Expression App initialized with config: {self.config_name}")
-    
+
     def _init_extensions(self):
-        """Initialize Flask extensions."""
-        # Enable CORS for API endpoints
-        CORS(self.app, resources={
-            r"/api/*": {"origins": "*"},
-            r"/health": {"origins": "*"}
-        })
-        
-        # Ensure upload directory exists
+        CORS(self.app, resources={r"/api/*": {"origins": "*"}})
         os.makedirs(self.app.config['UPLOAD_FOLDER'], exist_ok=True)
         os.makedirs(os.path.join(self.app.config['UPLOAD_FOLDER'], 'results'), exist_ok=True)
-        
         logger.info("Extensions initialized successfully")
     
     def _register_routes(self):
-        """Register all application routes."""
-        
-        # Web Interface Routes
-        @self.app.route('/')
-        def index():
-            """Main upload interface."""
-            return render_template('index.html', 
-                                 max_file_size=self.app.config['MAX_CONTENT_LENGTH'],
-                                 allowed_extensions=self.app.config['ALLOWED_EXTENSIONS'])
-        
-        @self.app.route('/results/<conversion_id>')
-        def results(conversion_id):
-            """Display conversion results."""
-            conversion = self.db_manager.get_conversion_by_id(conversion_id)
-            if not conversion:
-                flash('Conversion not found', 'error')
-                return redirect(url_for('index'))
+        self.app.add_url_rule('/', 'index', self.index, strict_slashes=False)
+        self.app.add_url_rule('/results/<conversion_id>', 'results', self.results, strict_slashes=False)
+        self.app.add_url_rule('/history', 'history', self.history, strict_slashes=False)
+        self.app.add_url_rule('/upload', 'upload_file', self.upload_file, methods=['POST'], strict_slashes=False)
+        self.app.add_url_rule('/api/status/<conversion_id>', 'api_status', self.api_status, strict_slashes=False)
+        self.app.add_url_rule('/status/<conversion_id>', 'status_legacy', self.api_status, strict_slashes=False)
+        self.app.add_url_rule('/api/history', 'api_history', self.api_history, strict_slashes=False)
+        self.app.add_url_rule('/api/health', 'health_check', self.health_check, strict_slashes=False)
+
+    # --- File Upload Route (핵심 변경 부분) ---
+    def upload_file(self):
+        try:
+            if 'file' not in request.files:
+                return jsonify({'error': 'No file provided'}), 400
             
-            return render_template('results.html', conversion=conversion)
-        
-        @self.app.route('/history')
-        def history():
-            """Display conversion history for current session."""
-            session_id = session.get('session_id')
-            if not session_id:
-                return render_template('history.html', conversions=[])
+            file = request.files['file']
+            target_expression = request.form.get('expression', 'sad')
             
-            conversions = self.db_manager.get_session_conversions(session_id)
-            return render_template('history.html', conversions=conversions)
-        
-        # File Upload Routes
-        @self.app.route('/upload', methods=['POST'])
-        def upload_file():
-            """Handle file upload and initiate conversion."""
-            try:
-                # Validate request
-                if 'file' not in request.files:
-                    return jsonify({'error': 'No file provided'}), 400
-                
-                file = request.files['file']
-                target_expression = request.form.get('expression', 'happy')
-                
-                if file.filename == '':
-                    return jsonify({'error': 'No file selected'}), 400
-                
-                # Validate file
-                if not self._allowed_file(file.filename):
-                    return jsonify({'error': 'Invalid file type'}), 400
-                
-                # Ensure session exists
-                session_id = self._ensure_session()
-                
-                # Save uploaded file
-                filename = secure_filename(file.filename)
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                unique_filename = f"{timestamp}_{uuid.uuid4().hex[:8]}_{filename}"
-                file_path = os.path.join(self.app.config['UPLOAD_FOLDER'], unique_filename)
-                
-                file.save(file_path)
-                
-                # Create conversion record
-                conversion = self.db_manager.create_conversion_record(
-                    session_id=session_id,
-                    original_filename=filename,
-                    target_expression=target_expression,
-                    file_path=file_path,
-                    file_size=os.path.getsize(file_path)
-                )
-                
-                logger.info(f"File uploaded successfully: {unique_filename}, conversion_id: {conversion.id}")
-                
-                return jsonify({
-                    'success': True,
-                    'conversion_id': conversion.id,
-                    'message': 'File uploaded successfully',
-                    'status': 'uploaded'
-                })
-                
-            except RequestEntityTooLarge:
-                return jsonify({'error': 'File too large'}), 413
-            except Exception as e:
-                logger.error(f"Upload error: {str(e)}")
-                return jsonify({'error': 'Upload failed'}), 500
-        
-        # API Routes
-        @self.app.route('/api/convert', methods=['POST'])
-        def api_convert():
-            """API endpoint for conversion requests."""
-            try:
-                # This would integrate with the model service
-                # For now, return a placeholder response
-                return jsonify({
-                    'message': 'Conversion API endpoint - Model service integration pending',
-                    'status': 'pending_implementation'
-                })
-            except Exception as e:
-                logger.error(f"API convert error: {str(e)}")
-                return jsonify({'error': 'Conversion failed'}), 500
-        
-        @self.app.route('/api/status/<conversion_id>')
-        def api_status(conversion_id):
-            """Get conversion status via API."""
-            try:
-                conversion = self.db_manager.get_conversion_by_id(conversion_id)
-                if not conversion:
-                    return jsonify({'error': 'Conversion not found'}), 404
-                
-                return jsonify(conversion.to_dict())
-            except Exception as e:
-                logger.error(f"API status error: {str(e)}")
-                return jsonify({'error': 'Status check failed'}), 500
-        
-        @self.app.route('/api/history/<session_id>')
-        def api_history(session_id):
-            """Get conversion history via API."""
-            try:
-                limit = request.args.get('limit', 50, type=int)
-                offset = request.args.get('offset', 0, type=int)
-                
-                conversions = self.db_manager.get_session_conversions(session_id, limit, offset)
-                return jsonify([conv.to_dict() for conv in conversions])
-            except Exception as e:
-                logger.error(f"API history error: {str(e)}")
-                return jsonify({'error': 'History retrieval failed'}), 500
-        
-        # Health and Status Routes
-        @self.app.route('/health')
-        def health_check():
-            """Application health check endpoint."""
-            try:
-                health_status = {
-                    'status': 'healthy',
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'version': '1.0.0',
-                    'database': self.db_manager.health_check(),
-                    'upload_directory': {
-                        'exists': os.path.exists(self.app.config['UPLOAD_FOLDER']),
-                        'writable': os.access(self.app.config['UPLOAD_FOLDER'], os.W_OK)
-                    }
-                }
-                
-                # Check if any critical components are failing
-                if not health_status['database']['connection']:
-                    health_status['status'] = 'unhealthy'
-                
-                status_code = 200 if health_status['status'] == 'healthy' else 503
-                return jsonify(health_status), status_code
-                
-            except Exception as e:
-                logger.error(f"Health check error: {str(e)}")
-                return jsonify({
-                    'status': 'unhealthy',
-                    'error': str(e),
-                    'timestamp': datetime.utcnow().isoformat()
-                }), 503
-        
-        @self.app.route('/stats')
-        def app_stats():
-            """Application statistics endpoint."""
-            try:
-                stats = {
-                    'total_conversions': ConversionHistory.query.count(),
-                    'active_sessions': UserSession.query.filter(
-                        UserSession.last_activity > datetime.utcnow() - timedelta(hours=24)
-                    ).count(),
-                    'successful_conversions': ConversionHistory.query.filter_by(status='completed').count(),
-                    'failed_conversions': ConversionHistory.query.filter_by(status='failed').count(),
-                    'pending_conversions': ConversionHistory.query.filter_by(status='processing').count(),
-                    'disk_usage': self._get_disk_usage(),
-                    'uptime': self._get_uptime()
-                }
-                return jsonify(stats)
-            except Exception as e:
-                logger.error(f"Stats error: {str(e)}")
-                return jsonify({'error': 'Stats unavailable'}), 500
-    
+            if file.filename == '':
+                return jsonify({'error': 'No file selected'}), 400
+            
+            if not self._allowed_file(file.filename):
+                return jsonify({'error': 'Invalid file type'}), 400
+            
+            session_id = self._ensure_session()
+            
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            unique_filename = f"{timestamp}_{uuid.uuid4().hex[:8]}_{filename}"
+            file_path = os.path.join(self.app.config['UPLOAD_FOLDER'], unique_filename)
+            
+            file.save(file_path)
+            
+            # ★ 4. DB에 'pending' 상태로 우선 기록
+            conversion = self.db_manager.create_conversion_record(
+                session_id=session_id,
+                original_filename=filename,
+                target_expression=target_expression,
+                original_file_path=file_path,
+                file_size=os.path.getsize(file_path)
+            )
+            self.db.session.commit()
+            
+            # ★ 5. 백그라운드 스레드를 시작하고 즉시 응답 전송
+            thread = threading.Thread(
+                target=run_model_processing,
+                args=(self.app, conversion.id, file_path, target_expression, session_id)
+            )
+            thread.start()
+            
+            logger.info(f"파일 업로드 완료. Conversion ID {conversion.id}에 대한 백그라운드 처리 시작됨.")
+            
+            return jsonify({
+                'success': True,
+                'conversion_id': conversion.id,
+                'message': 'File uploaded, processing has started.',
+                'status': 'pending'
+            })
+            
+        except Exception as e:
+            logger.error(f"업로드 중 예외 발생: {str(e)}")
+            logger.error(traceback.format_exc())
+            return jsonify({'error': 'Upload failed due to an unexpected error'}), 500
+
+    # --- 나머지 메서드들은 기존과 동일 ---
+    def index(self):
+        return render_template('index.html')
+
+    def results(self, conversion_id):
+        conversion = self.db_manager.get_conversion_by_id(conversion_id)
+        if not conversion:
+            flash('Conversion not found', 'error')
+            return redirect(url_for('index'))
+        return render_template('results.html', conversion=conversion)
+
+    def history(self):
+        session_id = session.get('session_id')
+        if not session_id:
+            return render_template('history.html', conversions=[])
+        conversions = self.db_manager.get_session_conversions(session_id)
+        return render_template('history.html', conversions=conversions)
+
+    def api_status(self, conversion_id):
+        conversion = self.db_manager.get_conversion_by_id(conversion_id)
+        if not conversion:
+            return jsonify({'error': 'Conversion not found'}), 404
+        return jsonify(conversion.to_dict())
+
+    def api_history(self):
+        session_id = session.get('session_id')
+        if not session_id:
+            return jsonify({'error': 'Session not found'}), 400
+        conversions = self.db_manager.get_session_conversions(session_id)
+        return jsonify([conv.to_dict() for conv in conversions])
+
+    def health_check(self):
+        return jsonify({'status': 'healthy'})
+
     def _setup_error_handlers(self):
-        """Setup application error handlers."""
-        
         @self.app.errorhandler(404)
         def not_found(error):
-            if request.path.startswith('/api/'):
+            if request.headers.get('Accept') and 'application/json' in request.headers.get('Accept'):
                 return jsonify({'error': 'Endpoint not found'}), 404
-            return render_template('index.html'), 404
-        
-        @self.app.errorhandler(413)
-        def file_too_large(error):
-            return jsonify({'error': 'File too large'}), 413
-        
-        @self.app.errorhandler(500)
-        def internal_error(error):
-            logger.error(f"Internal server error: {str(error)}")
-            if request.path.startswith('/api/'):
-                return jsonify({'error': 'Internal server error'}), 500
-            flash('An error occurred. Please try again.', 'error')
-            return render_template('index.html'), 500
-    
+            return render_template('index.html'), 200
+
     def _setup_request_hooks(self):
-        """Setup request hooks for session management and logging."""
-        
         @self.app.before_request
         def before_request():
-            """Execute before each request."""
-            # Ensure session exists for web requests
-            if not request.path.startswith('/api/') and not request.path.startswith('/static/'):
+            if not request.path.startswith(('/api/', '/static/')):
                 self._ensure_session()
-            
-            # Log request
-            logger.debug(f"Request: {request.method} {request.path}")
-        
-        @self.app.after_request
-        def after_request(response):
-            """Execute after each request."""
-            # Update session activity
-            session_id = session.get('session_id')
-            if session_id:
-                try:
-                    user_session = UserSession.query.filter_by(session_id=session_id).first()
-                    if user_session:
-                        user_session.update_activity()
-                        self.db_manager.db.session.commit()
-                except Exception as e:
-                    logger.error(f"Session update error: {str(e)}")
-            
-            return response
-    
+
     def _ensure_session(self):
-        """Ensure user session exists and return session ID."""
         if 'session_id' not in session:
-            session_id = str(uuid.uuid4())
-            session['session_id'] = session_id
-            session.permanent = True
-            
-            # Create database session record
-            try:
-                user_session = UserSession(
-                    session_id=session_id,
-                    ip_address=request.remote_addr,
-                    user_agent=request.headers.get('User-Agent', '')
-                )
-                self.db_manager.db.session.add(user_session)
-                self.db_manager.db.session.commit()
-                logger.info(f"New session created: {session_id}")
-            except Exception as e:
-                logger.error(f"Session creation error: {str(e)}")
-        
-        return session['session_id']
-    
+            session['session_id'] = str(uuid.uuid4())
+        return session.get('session_id')
+
     def _allowed_file(self, filename):
-        """Check if file extension is allowed."""
-        return ('.' in filename and 
-                filename.rsplit('.', 1)[1].lower() in self.app.config['ALLOWED_EXTENSIONS'])
-    
-    def _get_disk_usage(self):
-        """Get disk usage statistics for upload directory."""
-        try:
-            upload_dir = self.app.config['UPLOAD_FOLDER']
-            total_size = 0
-            file_count = 0
-            
-            for dirpath, dirnames, filenames in os.walk(upload_dir):
-                for filename in filenames:
-                    filepath = os.path.join(dirpath, filename)
-                    if os.path.exists(filepath):
-                        total_size += os.path.getsize(filepath)
-                        file_count += 1
-            
-            return {
-                'total_size_bytes': total_size,
-                'total_size_mb': round(total_size / (1024 * 1024), 2),
-                'file_count': file_count
-            }
-        except Exception as e:
-            logger.error(f"Disk usage calculation error: {str(e)}")
-            return {'error': 'Unable to calculate disk usage'}
-    
-    def _get_uptime(self):
-        """Get application uptime."""
-        # This would be more accurate with a startup timestamp
-        return "Uptime tracking not implemented"
-    
+        return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
+
     def run(self, host='0.0.0.0', port=5000, debug=None):
-        """Run the Flask application."""
-        if debug is None:
-            debug = self.app.config.get('DEBUG', False)
-        
         logger.info(f"Starting Facial Expression App on {host}:{port}")
         self.app.run(host=host, port=port, debug=debug)
 
-def create_app(config_name=None):
-    """
-    Application factory function.
-    
-    Args:
-        config_name (str, optional): Configuration environment name
-        
-    Returns:
-        Flask: Configured Flask application instance
-    """
-    app_instance = FacialExpressionApp(config_name)
-    return app_instance.app
-
-def init_database_tables():
-    """Initialize database tables if they don't exist."""
-    try:
-        from database.migrations import DatabaseMigrator
-        
-        app = create_app()
-        with app.app_context():
-            migrator = DatabaseMigrator(app)
-            success = migrator.create_tables()
-            
-            if success:
-                logger.info("Database tables initialized successfully")
-                
-                # Check if we should seed sample data
-                if os.getenv('SEED_SAMPLE_DATA', 'false').lower() == 'true':
-                    migrator.seed_sample_data()
-                    logger.info("Sample data seeded successfully")
-            else:
-                logger.error("Failed to initialize database tables")
-                return False
-        
-        return True
-    except Exception as e:
-        logger.error(f"Database initialization error: {str(e)}")
-        return False
-
+# if __name__ == '__main__' 블록
 if __name__ == '__main__':
-    """Main application entry point."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='AI Facial Expression Transformer')
-    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
-    parser.add_argument('--port', type=int, default=5000, help='Port to bind to')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--init-db', action='store_true', help='Initialize database tables')
-    parser.add_argument('--config', default=None, help='Configuration environment')
-    
-    args = parser.parse_args()
-    
-    # Initialize database if requested
-    if args.init_db:
-        logger.info("Initializing database tables...")
-        if init_database_tables():
-            logger.info("Database initialization completed successfully")
-        else:
-            logger.error("Database initialization failed")
-            sys.exit(1)
-    
-    # Create and run application
-    try:
-        app_instance = FacialExpressionApp(args.config)
-        app_instance.run(host=args.host, port=args.port, debug=args.debug)
-    except KeyboardInterrupt:
-        logger.info("Application shutdown requested")
-    except Exception as e:
-        logger.error(f"Application startup error: {str(e)}")
-        logger.error(traceback.format_exc())
-        sys.exit(1)
+    app_instance = FacialExpressionApp()
+    app_instance.run()

@@ -2,3 +2,6 @@ facial_expression_env/
 *.log
 instance/
 __pycache__/ 
+static/uploads/*
+*.pyc
+.env
