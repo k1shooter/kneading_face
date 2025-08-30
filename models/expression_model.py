@@ -185,9 +185,11 @@ class ExpressionModel:
             
             # Load the main pipeline
             try:
+                # <<핵심 수정 사항>>: 현재 device가 'cpu'인지를 확인하여 dtype을 동적으로 결정합니다.
+                dtype = torch.float32 if self.device == 'cpu' else (torch.float16 if self.config.precision == "fp16" else torch.float32)
                 self.model = StableDiffusionImg2ImgPipeline.from_pretrained(
                     self.config.model_name,
-                    torch_dtype=torch.float16 if self.config.precision == "fp16" else torch.float32,
+                    torch_dtype=dtype,
                     safety_checker=None if not self.config.safety_checker else "default",
                     requires_safety_checker=self.config.requires_safety_checker,
                     use_safetensors=False
