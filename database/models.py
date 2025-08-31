@@ -70,13 +70,40 @@ class ConversionHistory(db.Model):
     
     def to_dict(self):
         """Convert model instance to dictionary for JSON serialization."""
+        # Helper function to convert a file system path to a web-accessible URL
+        def make_url(path):
+            if not path:
+                return None
+            try:
+                # Find the 'static' directory in the path to build the URL
+                # This makes it independent of the absolute path on the server
+                parts = path.replace('\\', '/').split('/')
+                static_index = parts.index('static')
+                # Join the parts from 'static' onwards to create the URL
+                url_path = '/'.join(parts[static_index:])
+                return f'/{url_path}'
+            except (ValueError, IndexError):
+                # If 'static' is not in the path, we can't form a valid URL
+                return None
+
+        # Get original and result URLs
+        original_url = make_url(self.original_file_path)
+        result_url = make_url(self.result_file_path)
+
         return {
             'id': self.id,
             'session_id': self.session_id,
             'conversion_id': self.conversion_id,
             'original_filename': self.original_filename,
+            
+            # Add the new URL fields for the frontend
+            'original_url': original_url,
+            'result_url': result_url,
+
+            # Keep original path fields for backend reference
             'original_file_path': self.original_file_path,
             'result_file_path': self.result_file_path,
+            
             'thumbnail_path': self.thumbnail_path,
             'source_expression': self.source_expression,
             'target_expression': self.target_expression,
