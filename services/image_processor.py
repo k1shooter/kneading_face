@@ -17,6 +17,7 @@ from werkzeug.datastructures import FileStorage
 import hashlib
 import tempfile
 import shutil
+from flask import current_app
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -45,8 +46,10 @@ class ImageProcessor:
         self.max_image_size = getattr(config, 'MAX_IMAGE_SIZE', (2048, 2048))
         self.min_image_size = getattr(config, 'MIN_IMAGE_SIZE', (128, 128))
         self.default_quality = getattr(config, 'IMAGE_QUALITY', 85)
-        self.temp_dir = getattr(config, 'TEMP_UPLOAD_DIR', tempfile.gettempdir())
-        
+        #self.temp_dir = getattr(config, 'TEMP_UPLOAD_DIR', tempfile.gettempdir())
+        self.results_folder = current_app.config.get('RESULTS_FOLDER', 'static/uploads/results')
+        self.output_dir = getattr(config, 'UPLOAD_FOLDER', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'static', 'uploads'))
+
         # Face detection setup
         self.face_cascade = None
         self._init_face_detection()
@@ -486,10 +489,11 @@ class ImageProcessor:
             # Generate unique filename
             timestamp = int(time.time() * 1000)
             filename = f"result_{timestamp}.{output_format.lower()}"
-            output_path = os.path.join(self.temp_dir, filename)
+            #output_path = os.path.join(self.output_dir, filename)
+            output_path = os.path.join(self.results_folder, filename)
             
             # Ensure temp directory exists
-            os.makedirs(self.temp_dir, exist_ok=True)
+            os.makedirs(self.results_folder, exist_ok=True)
             
             # Save with appropriate parameters
             if output_format.upper() == 'JPEG':

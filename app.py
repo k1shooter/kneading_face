@@ -95,9 +95,9 @@ def run_model_processing(app, conversion_id, file_path, target_expression, sessi
             db.session.commit()
         finally:
             # 임시 원본 파일 삭제 (선택 사항)
-            if os.path.exists(file_path):
-                # os.remove(file_path)
-                logger.info(f"[Thread] 원본 임시 파일 {file_path} 삭제됨.")
+            # if os.path.exists(file_path):
+            #     # os.remove(file_path)
+            #     logger.info(f"[Thread] 원본 임시 파일 {file_path} 삭제됨.")
             pass
 
 

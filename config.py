@@ -19,6 +19,7 @@ class Config:
     
     # File Upload Configuration
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+    RESULTS_FOLDER = os.path.join(UPLOAD_FOLDER, 'results')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     
@@ -63,6 +64,7 @@ class Config:
         """Initialize application with configuration"""
         # Create upload directory if it doesn't exist
         os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+        os.makedirs(Config.RESULTS_FOLDER, exist_ok=True)
         os.makedirs(Config.MODEL_CACHE_DIR, exist_ok=True)
 
 
